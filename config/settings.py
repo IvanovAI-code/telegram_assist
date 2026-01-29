@@ -8,7 +8,7 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 #ДикПик:
-DEEPSEEK_API_KEY = os.getenv("TELEGRAM_TOKEN")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 DEEPSEEK_MODEL = "deepseek-chat" #выбираем быструю модель, нам ее хватит 
 
