@@ -41,6 +41,49 @@ class SerperService:
             response.raise_for_status()
             return response.json()
 
+    async def search_images(self, query: str, num_results: int = 3) -> list:
+        """
+        Выполняет поиск изображений в Google через Serper API
+
+        Args:
+            query: Поисковый запрос
+            num_results: Количество результатов (по умолчанию 3)
+
+        Returns:
+            Список URL изображений
+        """
+        payload = {
+            "q": query,
+            "num": num_results,
+            "gl": "ru",
+            "hl": "ru"
+        }
+
+        headers = {
+            "X-API-KEY": self.api_key,
+            "Content-Type": "application/json"
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{self.base_url}/images",  # Используем /images эндпоинт
+                json=payload,
+                headers=headers
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            # Извлекаем URL изображений
+            image_urls = []
+            if "images" in data:
+                for img in data["images"][:num_results]:
+                    image_url = img.get("imageUrl")
+                    if image_url:
+                        image_urls.append(image_url)
+
+            return image_urls
+
     def format_results(self, search_data: dict) -> str:
         """
         Форматирует результаты поиска в читаемый текст

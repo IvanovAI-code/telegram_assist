@@ -9,15 +9,16 @@ class DeepSeekService:
       self.base_url = DEEPSEEK_BASE_URL
       self.model = DEEPSEEK_MODEL
 
-   async def chat(self, user_message: str, system_prompt: str = None) -> str:
+   async def chat(self, user_message: str, system_prompt: str = None, history: list = None) -> str:
       """
       Отправляет сообщение пользователя в DeepSeek и возращает ответ
 
       args:
          user_message: сообщение пользователя
-         system_prompt: системный промт 
+         system_prompt: системный промт
+         history: история предыдущих сообщений (опционально)
 
-      Returns: 
+      Returns:
          Ответ от DeepSeek
 
       """
@@ -31,7 +32,11 @@ class DeepSeekService:
             "role": "system",
             "content": system_prompt
          })
-      
+
+      #Добавляем историю если есть
+      if history:
+         messages.extend(history)
+
       #Добавляем сообщение пользователя
       messages.append({
          "role": "user",
@@ -44,9 +49,8 @@ class DeepSeekService:
          "messages": messages,
          "temperature": 0.7, #креативность модели. 0.7 - баланс.
 
-         "max_tokens": 1500, #максимум токенов в ответе. больше токенов - больше ответ, медленее и затратнее. 
-                            #надо поиграться и найти скорость - качество, оставлю пока так 
-         
+         "max_tokens": 600, #ограничиваем длину ответа для краткости
+
       }
 
       #отправляем асинхронный HTTP запрос 

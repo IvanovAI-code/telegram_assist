@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import Message, URLInputFile, InputMediaPhoto
 from services.deepseek import DeepSeekService
 from services.serper import SerperService
 
@@ -11,10 +11,35 @@ router = Router()
 deepseek = DeepSeekService()
 serper = SerperService()
 
+# Хранилище истории диалогов (по chat_id)
+# Структура: {chat_id: [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}, ...]}
+conversation_history = {}
+MAX_HISTORY_MESSAGES = 20  # Максимум 20 сообщений в истории (10 пар вопрос-ответ)
+
 # Системный промпт - описывает роль AI
-SYSTEM_PROMPT = """Ты личный AI-ассистент в Telegram. 
+SYSTEM_PROMPT = """Ты личный AI-ассистент в Telegram.
 Помогаешь с задачами, привычками, питанием и отвечаешь на вопросы.
-Общайся дружелюбно и по-русски."""
+Общайся дружелюбно и по-русски.
+
+ВАЖНО: Отвечай КРАТКО. Максимум 2-3 предложения. Без лишних слов."""
+
+
+def get_conversation_history(chat_id: int) -> list:
+    """Получить историю диалога для пользователя"""
+    if chat_id not in conversation_history:
+        conversation_history[chat_id] = []
+    return conversation_history[chat_id]
+
+
+def add_to_history(chat_id: int, role: str, content: str):
+    """Добавить сообщение в историю диалога"""
+    history = get_conversation_history(chat_id)
+    history.append({"role": role, "content": content})
+
+    # Ограничиваем размер истории
+    if len(history) > MAX_HISTORY_MESSAGES:
+        # Удаляем самые старые сообщения, оставляем последние MAX_HISTORY_MESSAGES
+        conversation_history[chat_id] = history[-MAX_HISTORY_MESSAGES:]
 
 
 @router.message(Command("start"))
@@ -166,6 +191,9 @@ async def handle_text(message: Message):
             formatted_results = serper.format_results(search_results)
 
             # AI даёт краткий ответ на основе поиска
+            # Получаем историю для контекста
+            history = get_conversation_history(message.chat.id)
+
             ai_prompt = f"""Пользователь спросил: "{message.text}"
 
 Вот результаты поиска:
@@ -176,14 +204,69 @@ async def handle_text(message: Message):
 
             ai_response = await deepseek.chat(
                 user_message=ai_prompt,
-                system_prompt="Ты помощник, который даёт краткие точные ответы на основе поиска. Отвечай по делу, без воды."
+                system_prompt="Ты помощник, который даёт краткие точные ответы на основе поиска. Отвечай по делу, без воды.",
+                history=history
             )
+
+            # Сохраняем в историю (оригинальный вопрос пользователя, а не промпт)
+            add_to_history(message.chat.id, "user", message.text)
+            add_to_history(message.chat.id, "assistant", ai_response)
+
+            # Проверяем нужны ли изображения
+            need_images_prompt = f"""Определи, нужны ли изображения/фото/схемы для наглядности ответа на вопрос: "{message.text}"
+
+Изображения НУЖНЫ если:
+- Спрашивают про распиновку, схемы, чертежи
+- Нужна визуализация (диаграммы, графики)
+- Технические схемы подключения
+- Фото инструкций или процессов
+
+Изображения НЕ НУЖНЫ если:
+- Простые текстовые вопросы
+- Погода, новости, курсы валют
+- Общие вопросы без визуальной составляющей
+
+Ответь ТОЛЬКО одним словом: "да" или "нет"."""
+
+            need_images = await deepseek.chat(
+                user_message=need_images_prompt,
+                system_prompt="Ты помощник, который определяет нужны ли изображения. Отвечай только 'да' или 'нет'."
+            )
+
+            # Если нужны изображения - ищем и отправляем
+            if "да" in need_images.lower():
+                try:
+                    image_urls = await serper.search_images(message.text, num_results=2)
+
+                    if image_urls:
+                        # Отправляем текстовый ответ
+                        await message.answer(ai_response)
+
+                        # Отправляем изображения
+                        for img_url in image_urls:
+                            try:
+                                photo = URLInputFile(img_url)
+                                await message.answer_photo(photo, caption="📸")
+                            except Exception as img_err:
+                                # Если не удалось отправить конкретное изображение - пропускаем
+                                continue
+                        return
+                except Exception as e:
+                    # Если не удалось найти изображения - просто отправляем текст
+                    pass
         else:
-            # Обычный ответ без поиска
+            # Обычный ответ без поиска, с учётом истории
+            history = get_conversation_history(message.chat.id)
+
             ai_response = await deepseek.chat(
                 user_message=message.text,
-                system_prompt=SYSTEM_PROMPT
+                system_prompt=SYSTEM_PROMPT,
+                history=history
             )
+
+            # Сохраняем в историю
+            add_to_history(message.chat.id, "user", message.text)
+            add_to_history(message.chat.id, "assistant", ai_response)
 
         # Отправляем ответ пользователю
         await message.answer(ai_response)
