@@ -2,7 +2,7 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher
 from config.settings import TELEGRAM_TOKEN
-from bot.handlers import base
+from bot.handlers import base, voice
 
 # Настраиваем логирование (вывод информации)
 logging.basicConfig(
@@ -21,9 +21,10 @@ async def main():
     # Диспетчер = управляет обработчиками
     dp = Dispatcher()
     
-    # Подключаем роутер с обработчиками
+    # Подключаем роутеры с обработчиками
     dp.include_router(base.router)
-    
+    dp.include_router(voice.router)
+
     logger.info("🤖 Бот запущен!")
     
     try:
